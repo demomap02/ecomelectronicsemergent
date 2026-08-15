@@ -1,0 +1,181 @@
+{
+  "design_vision": "High-density, API-first headless electronics e-commerce platform. Challenges generic generic storefronts. Emphasizes urgent deal mechanics, deep merchandising, and five distinct switchable aesthetic identities. Mobile-first patterns for future Flutter app parity.",
+  "general_ui_ux_guidelines": [
+    "No generic centered layouts. Use dense grid merchandising (Flipkart/Noon style).",
+    "All interactive and key informational elements MUST include a data-testid attribute.",
+    "No 'Inter', 'Roboto', or 'Open Sans' for headings.",
+    "Strict separation of concerns: UI components must be dumb. All data comes from mocked API service layers (JSON tokens/endpoints).",
+    "Never use fully transparent backgrounds on headers/overlays that sit above content. Always use backdrop-blur or solid fills."
+  ],
+  "theme_tokens": {
+    "hyper_retail": {
+      "id": "hyper_retail",
+      "name": "Hyper Retail (Default)",
+      "vibe": "High density, flash sales, urgent, Flipkart/Noon inspired.",
+      "colors": {
+        "primary": "#FACC15",
+        "secondary": "#1D4ED8",
+        "background": "#F8FAFC",
+        "surface": "#FFFFFF",
+        "text": "#0F172A",
+        "accent": "#EF4444"
+      },
+      "typography": {
+        "heading": "Cabinet Grotesk",
+        "body": "IBM Plex Sans"
+      },
+      "shapes": "rounded-sm"
+    },
+    "cyber_neon": {
+      "id": "cyber_neon",
+      "name": "Cyber Neon",
+      "vibe": "Dark mode, gamer, futuristic, glowing edges.",
+      "colors": {
+        "primary": "#22D3EE",
+        "secondary": "#F472B6",
+        "background": "#09090B",
+        "surface": "#18181B",
+        "text": "#F8FAFC",
+        "accent": "#A855F7"
+      },
+      "typography": {
+        "heading": "Unbounded",
+        "body": "JetBrains Mono"
+      },
+      "shapes": "rounded-none"
+    },
+    "minimalist_swiss": {
+      "id": "minimalist_swiss",
+      "name": "Stark Swiss",
+      "vibe": "Extreme clarity, high contrast, borderless.",
+      "colors": {
+        "primary": "#000000",
+        "secondary": "#64748B",
+        "background": "#FFFFFF",
+        "surface": "#F1F5F9",
+        "text": "#000000",
+        "accent": "#DC2626"
+      },
+      "typography": {
+        "heading": "General Sans",
+        "body": "Satoshi"
+      },
+      "shapes": "rounded-none"
+    },
+    "soft_pastel": {
+      "id": "soft_pastel",
+      "name": "Soft Pastel",
+      "vibe": "Tactile, approachable, Gen-Z lifestyle.",
+      "colors": {
+        "primary": "#FEF08A",
+        "secondary": "#A7F3D0",
+        "background": "#FFFAEB",
+        "surface": "#FFFFFF",
+        "text": "#1F2937",
+        "accent": "#FDBA74"
+      },
+      "typography": {
+        "heading": "Outfit",
+        "body": "Figtree"
+      },
+      "shapes": "rounded-3xl"
+    },
+    "luxury_midnight": {
+      "id": "luxury_midnight",
+      "name": "Luxury Midnight",
+      "vibe": "Premium audio/video, moody, cinematic.",
+      "colors": {
+        "primary": "#FBBF24",
+        "secondary": "#064E3B",
+        "background": "#020617",
+        "surface": "#0F172A",
+        "text": "#F8FAFC",
+        "accent": "#38BDF8"
+      },
+      "typography": {
+        "heading": "Playfair Display",
+        "body": "Manrope"
+      },
+      "shapes": "rounded-lg"
+    }
+  },
+  "homepage_layouts": [
+    {
+      "id": "layout_mega_mall",
+      "name": "The Mega Mall",
+      "structure": "Sticky Header + Mega Menu -> Hero Deal Carousel -> Category Circles (Horizontal Scroll) -> Flash Sale Timer Section -> 3-Column Product Rails -> 'More Like This' Infinite Grid."
+    },
+    {
+      "id": "layout_bento",
+      "name": "The Bento Showcase",
+      "structure": "Asymmetric Grid (col-span-8, col-span-4). No sliders. One massive hero product block surrounded by smaller deal blocks. Editorial and dense."
+    },
+    {
+      "id": "layout_flash_frenzy",
+      "name": "The Flash Sale Frenzy",
+      "structure": "Countdown timers everywhere. Horizontal scrolling rails that auto-play. Heavy use of badges (50% OFF, ONLY 2 LEFT). Urgent micro-interactions."
+    },
+    {
+      "id": "layout_category_pillar",
+      "name": "The Category Pillar",
+      "structure": "Vertical left sidebar for categories (dashboard style). Right 75% of screen is an endless feed of mixed electronics products and promotional banners."
+    },
+    {
+      "id": "layout_immersive",
+      "name": "The Immersive Hero",
+      "structure": "Large parallax hero showing a flagship product. Below it, a sleek 4-column grid of top-rated items with glassmorphism product cards."
+    }
+  ],
+  "components": {
+    "product_card": {
+      "style": "Dense, compact. Must include: Image, Brand, Truncated Title, Rating Stars, Current Price, Strikethrough Old Price, Discount Badge, and an 'Add to Cart' quick button.",
+      "hover": "Slight lift (-translate-y-1) and shadow increase. Quick-view icon appears on image hover."
+    },
+    "category_rail": {
+      "style": "Horizontal scrolling container. Hide scrollbars but indicate swipeability. Items should be circular or squircle with an icon/image and label below."
+    },
+    "deal_countdown": {
+      "style": "High contrast block. Use monospaced font for numbers. E.g., 02 : 14 : 59 (Hrs:Min:Sec)."
+    },
+    "auth_modal": {
+      "style": "OTP-first design. Tabs for 'Email/Password' and 'Phone OTP'. Large input fields, clear focus states."
+    },
+    "admin_panel": {
+      "style": "High density data grids. Sidebar navigation. Cardless tables for maximum data visibility. Theme selector widget to toggle active storefront theme globally."
+    },
+    "delivery_partner_dashboard": {
+      "style": "Mobile-first layout. Large touch targets. Real-time simulated map or status timeline (Pending, Picked Up, In Transit, Delivered). Clear 'Mark as Delivered' CTA."
+    }
+  },
+  "image_urls": {
+    "electronics_lifestyle": "https://images.unsplash.com/photo-1498049794561-7780e7231661?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwyfHxlbGVjdHJvbmljcyUyMGdhZGdldHMlMjBsYXB0b3AlMjBwaG9uZXxlbnwwfHx8fDE3ODY4MDYyNzB8MA&ixlib=rb-4.1.0&q=85",
+    "laptop_hero": "https://images.unsplash.com/photo-1595303526913-c7037797ebe7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwzfHxlbGVjdHJvbmljcyUyMGdhZGdldHMlMjBsYXB0b3AlMjBwaG9uZXxlbnwwfHx8fDE3ODY4MDYyNzB8MA&ixlib=rb-4.1.0&q=85",
+    "headphones_premium": "https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzh8MHwxfHNlYXJjaHwxfHxwcmVtaXVtJTIwaGVhZHBob25lcyUyMGF1ZGlvfGVufDB8fHx8MTc4NjgwNjI3MHww&ixlib=rb-4.1.0&q=85",
+    "headphones_pink": "https://images.unsplash.com/photo-1613040809024-b4ef7ba99bc3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzh8MHwxfHNlYXJjaHwyfHxwcmVtaXVtJTIwaGVhZHBob25lcyUyMGF1ZGlvfGVufDB8fHx8MTc4NjgwNjI3MHww&ixlib=rb-4.1.0&q=85",
+    "delivery_person": "https://images.unsplash.com/photo-1617347454431-f49d7ff5c3b1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzR8MHwxfHNlYXJjaHwzfHxkZWxpdmVyeSUyMGNvdXJpZXIlMjBib3h8ZW58MHx8fHwxNzg2ODA2MjcwfDA&ixlib=rb-4.1.0&q=85",
+    "delivery_box": "https://images.unsplash.com/photo-1566576721346-d4a3b4eaeb55?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzR8MHwxfHNlYXJjaHwxfHxkZWxpdmVyeSUyMGNvdXJpZXIlMjBib3h8ZW58MHx8fHwxNzg2ODA2MjcwfDA&ixlib=rb-4.1.0&q=85",
+    "abstract_tech_bg": "https://images.unsplash.com/photo-1637166185518-058f5896a2e9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2Mzl8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGZ1dHVyaXN0aWMlMjB0ZWNoJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3ODY4MDYyNzB8MA&ixlib=rb-4.1.0&q=85"
+  },
+  "instructions_to_main_agent": {
+    "routing_and_views": "Create a unified React application with React Router. Include routes for: Home (with layout toggles), Product Listing, Product Detail, Cart, Checkout, Auth, Admin Dashboard, and Delivery Partner Dashboard.",
+    "theme_implementation": "Implement themes using CSS variables updated via a central React Context or Zustand store. Map the JSON design tokens directly to root variables so the entire app restyles instantly.",
+    "homepage_switcher": "In the Admin panel (or via a floating debug toggle), allow the user to switch between the 5 homepage layouts and 5 themes on the fly.",
+    "api_mocking": "Strict headless requirement: Do NOT couple logic into components. Create a `services/api.js` file that mocks REST/OpenAPI endpoints for products, auth (OTP), and orders. The UI should just call these async functions.",
+    "mobile_ready": "Ensure the Delivery Partner view and Auth flows (OTP) feel like a native mobile app. Use tight spacing, bottom sheets (where appropriate), and avoid desktop-only hover dependencies."
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic outputs. Avoid this: make creative, distinctive frontends.",
+    "Don't make generic centered layouts. Dense e-commerce grids only.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur) where appropriate (e.g., sticky headers).",
+    "You MUST NOT apply universal transition (e.g., transition: all). Add transitions for specific properties.",
+    "You MUST NOT center align the app container (.App { text-align: center; }). It disrupts reading flow.",
+    "Always use modern button styles relevant to the active theme with interaction animations.",
+    "NEVER use AI assistant Emoji characters (🤖🧠💭💡) for icons. Use phosphour or lucide-react.",
+    "Every interaction needs micro-animations - hover states, transitions. Static = dead.",
+    "Use generous spacing inside containers with borders to prevent text collision.",
+    "Missing categories = main agent will use placeholder text which is FORBIDDEN. Use the provided image URLs.",
+    "Prioritize using pre-existing Shadcn components from src/components/ui.",
+    "Use 'sonner' for toast notifications."
+  ]
+}

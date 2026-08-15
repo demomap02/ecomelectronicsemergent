@@ -1,0 +1,62 @@
+{
+  "summary": "Iteration 2 retest of VoltMart (API-first electronics store). Backend: 68/68 pytest tests pass (existing regression suite + new /app/backend/tests/test_iteration2_fixes.py covering the 4 reported fixes). All iteration-1 defects are confirmed FIXED: (1) GET /api/products no longer 422s for deal='' or any combination of empty params (12 param combos verified 200); (2) ASW AS-C603 comb now has a video and PDP renders [data-testid=pdp-video] (AS-9509 + AS-JC11 also render; all 3 mp4 URLs return HTTP 200); (3) POST /api/orders rejects qty > stock with 400 and decrements stock after success, cart add caps qty at stock; (4) invalid payment_method => 400, mock => paid, cod/razorpay => pending; (5) PUT/DELETE /api/admin/products/{id} with unknown id => 404. Frontend E2E (Playwright, desktop 1920 + mobile 390): /products listing renders (70 items), header search ('asw' -> 14 items), nav-cat-* links, sort-select (all 4 sorts verified ordered), brand-ASW filter, price slider filtering, add-to-cart from grid (cart-count 0->1). Full purchase journey passed: customer login -> cart -> checkout with MEGA25 (-Rs.5,000) -> Place Order -> 'Order Confirmed! VM327380' -> visible in My Orders, cart cleared. Admin panel: all 7 tabs render (tab id is 'overview', not 'dashboard'), product create+delete, coupon create+delete, category add+delete, users role selects, analytics with 3 charts. Appearance: theme (cyber_neon) + layout (bento) switching persists via PUT /api/admin/config and re-renders storefront; all 5 themes and 5 layouts render with zero console errors. Delivery flow on a fresh order VM327380: admin assign -> partner sees it -> Mark Picked Up -> Start Transit -> Mark Delivered, and the customer's My Orders shows 'Delivered' (state sync verified). Defaults restored (hyper_retail / layout_mega_mall) and TEST_ data cleaned up.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/cart/{pid}", "issue": "Unlike POST /api/cart, PUT does not validate/cap qty against product stock and does not 404 on unknown product_id — a client can set qty far above stock (order creation does correctly reject it with 400, so no oversell). Suggest validating in PUT too."},
+      {"endpoint": "DELETE /api/admin/categories/{cid}, DELETE /api/admin/coupons/{cid}", "issue": "Return 200 {ok:true} even when the id does not exist (products endpoints were fixed to 404; these were not)."},
+      {"endpoint": "POST /api/auth/login", "issue": "No brute-force lockout/rate limit: 6+ consecutive wrong passwords all return 401 with no throttling (auth is Bearer-JWT only, no httpOnly cookie, CORS allow_credentials=False — so the cookie/lockout playbook items are partly N/A, but rate limiting is still recommended)."},
+      {"endpoint": "POST /api/orders", "issue": "Stock check and $inc decrement are not atomic/transactional; two concurrent orders for the last unit can both succeed and drive stock negative."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "components/ui/slider.jsx (used by Products price filter)", "issue": "Range slider renders only ONE thumb: the shadcn wrapper hardcodes a single <SliderPrimitive.Thumb>, so for value=[min,max] the second (max) handle is never rendered — users can only grab one handle. Track/Range also use Tailwind bg-primary/20 & bg-primary which are not defined by the CSS-variable theme, so the track and filled range are invisible. Fix: render props.value.map((_, i) => <Thumb key={i} />) and style Track/Range with var(--primary).", "selector": "[data-testid=\"price-slider\"]", "priority": "HIGH"},
+      {"component": "ProductCard", "issue": "Cards in a row are not equal height / CTA not bottom-aligned — when a title wraps to 2 lines the 'Add to Cart' button sits lower than its neighbours (visible on /products and Flash Frenzy layout). Use flex-col + mt-auto on the CTA.", "selector": "[data-testid^=\"product-card-\"]", "priority": "MEDIUM"},
+      {"component": "ProductCard (mobile 390px)", "issue": "'Add to Cart' label truncates to 'Add to Car' on some cards because the cart icon + text overflow the compact button.", "selector": "[data-testid^=\"add-cart-\"]", "priority": "LOW"},
+      {"component": "Products.jsx select options", "issue": "React console error on /products: 'In HTML, <span> cannot be a child of <option>' (hydration warning) caused by the mapped option label. Cosmetic but pollutes the console.", "selector": "[data-testid=\"sort-select\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Products listing error state", "issue": "load() catches API failures and silently renders 'No products match your filters.' — a genuine backend failure is indistinguishable from an empty result; no error/retry UI.", "affected_selectors": ["[data-testid=\"products-grid\"]"]},
+      {"flow": "Products listing price filter", "issue": "min_price=0 & max_price=150000 are always sent even when untouched, so any product priced above Rs.1,50,000 would be silently hidden (no such product today, but the filter is not truly optional).", "affected_selectors": ["[data-testid=\"price-slider\"]"]}
+    ],
+    "design_issues": [
+      {"screen": "Homepage - The Immersive Hero layout", "issues": ["Hero headline/subtext is white over a bright product photo -> low contrast", "Secondary 'Browse all' button is white text on a translucent light background and is nearly unreadable"]},
+      {"screen": "Products listing - filter sidebar", "issues": ["Price-range slider has no visible track/fill and only one visible handle (see ui_bugs)", "Handle overlaps the 'Price range' label area"]},
+      {"screen": "Checkout", "issues": ["Razorpay option is rendered but permanently disabled ('coming soon') — acceptable for a mock, worth labelling as unavailable rather than a selectable-looking radio"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_iteration2_fixes.py",
+    "/app/backend/tests/cleanup_test_data.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix components/ui/slider.jsx to render one thumb per value and theme the Track/Range with CSS vars so the price range filter is usable/visible",
+    "Equalise ProductCard heights and bottom-align the Add to Cart CTA; fix mobile label truncation",
+    "Add stock validation (and 404 on unknown product) to PUT /api/cart/{pid}",
+    "Return 404 for DELETE /api/admin/categories/{cid} and /api/admin/coupons/{cid} when the id does not exist",
+    "Surface a real error/retry state on /products instead of the 'No products match your filters.' empty state when the API call throws",
+    "Improve contrast of the Immersive Hero headline and 'Browse all' button",
+    "Optional hardening: login rate-limiting and an atomic (findOneAndUpdate) stock decrement in create_order"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 696 lines and mixes seed data, models, and all routers — split seed/theme constants and routers into modules before it grows further",
+    "create_order validates stock then decrements with a separate $inc loop; use conditional findOneAndUpdate({id, stock:{$gte:qty}}) to avoid overselling under concurrency",
+    "add_cart caps qty silently at stock; the API returns no indication that the requested qty was reduced, so the UI cannot inform the user",
+    "Category/coupon delete endpoints ignore deleted_count, inconsistent with the (now correct) product endpoints"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration2_fixes.py (new)",
+    "/app/backend/tests/cleanup_test_data.py (new)",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "success_rate": {"backend": "100% (68/68 pytest)", "frontend": "95% (all flows pass; price-slider component + card alignment/contrast defects)"},
+  "seed_data_creation": "Created and then deleted TEST_LowStock / TEST_StockDec / TEST_UI_Product products, TESTUI20 coupon, TEST UI Cat category and TEST_* registered users; ran /app/backend/tests/cleanup_test_data.py which removed 28 TEST users, 4 TEST orders, 2 carts (only partner@voltmart.com remains as delivery partner). Real orders VM327380 (delivered, customer@voltmart.com) and earlier customer orders were left intact.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "/app/memory/test_credentials.md present and all 3 accounts work: demomaptesting@gmail.com/Admin@123 (admin), customer@voltmart.com/Customer@123, partner@voltmart.com/Partner@123. Admin bcrypt hash verified to start with $2b$.",
+  "context_for_next_testing_agent": "Run backend with `cd /app/backend && python -m pytest tests/ -q` (pytest.ini forces -n 2 --dist loadscope; use -n 0 for serial). test_iteration2_fixes.py uses its own throw-away registered customer to avoid cart races with backend_test.py which uses customer@voltmart.com — keep that pattern for any new cart/order tests. Admin tab testid is admin-tab-overview (not dashboard); the coupon input lives on /checkout, not /cart; ThemeFab layout buttons are data-testid=layout-<layout_id>. Order VM327380 is now delivered — create a fresh order for any future delivery-flow retest. Remaining open items are the price-slider component bug, ProductCard alignment/contrast, PUT /api/cart stock validation and category/coupon delete 404s. Run /app/backend/tests/cleanup_test_data.py after testing to purge TEST_ data.",
+  "rca_of_the_issue": "Iteration-1 422: list_products typed `deal: bool`, so the frontend's `deal=''` failed validation. Now Optional[str] + frontend sends only truthy params + try/catch — verified fixed. Comb video: seed() is insert-only so the pre-existing doc never got the new field; the added update_many backfill block fixes it (confirmed all three ASW media products expose a reachable .mp4). New finding: the price-range filter appears broken because /app/frontend/src/components/ui/slider.jsx renders a single hardcoded SliderPrimitive.Thumb, so a 2-value range only ever paints one handle, and its Track/Range use Tailwind `bg-primary` classes that the CSS-variable theming never defines, leaving the track invisible."
+}

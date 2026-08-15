@@ -1,0 +1,54 @@
+{
+  "summary": "First full test pass on VoltMart (API-first electronics store). Backend: created /app/backend/tests/backend_test.py with 40 pytest cases covering auth (email/password, register, role-escalation, phone OTP, JWT guards), /api/config themes+layouts, catalog (search/category/brand/sort/price/pagination/detail+related/404), cart CRUD + coupon min-order rules, checkout (mock=paid, cod=pending, cart clearing, totals math), order ownership 403, admin CRUD (products/categories/coupons/users/roles/analytics + 403 for non-admins), delivery assign/status-flow/authorization. 39/40 passed. Frontend: verified home (all 5 layouts + 5 themes render and restyle), login (email, phone OTP with debug_otp, registration, session persistence, logout), PDP video rendering, full purchase journey (add to cart -> qty change -> checkout with MEGA25 coupon -> order confirmed VM159870 -> visible in My Orders), admin panel all 7 tabs (Overview charts, Product create/edit/delete via dialog, Orders assign to partner, Users role change, Coupons create, Categories, Appearance theme+layout persistence to storefront), and delivery dashboard advancing placed->confirmed->picked_up->in_transit->delivered. Two real defects found: (1) CRITICAL - the entire /products listing page is broken (HTTP 422) so search/category/deal browsing is unusable; (2) the ASW comb product in the DB has no 'video' field (seed does not backfill existing docs), so its product video never renders.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products?deal=", "issue": "Optional[int] 'deal' rejects empty string with 422. Backend is technically correct but too strict for a headless API consumed by web/Flutter clients; accepting empty string (or making it a bool/str) would remove a whole class of client bugs. This currently 422s every request the Products page makes."},
+      {"endpoint": "startup seed()", "issue": "Seed is skip-if-exists by title, so newly added fields on already-seeded products are never applied. The ASW AS-C603 comb doc in Mongo has no 'video' key even though ASW_COMB defines one (URL itself is valid, returns 200 video/mp4). Use an upsert/$set for video+images instead of insert-only."},
+      {"endpoint": "GET /api/products", "issue": "No stock validation anywhere: cart and POST /api/orders accept qty far above product 'stock' (added 20 units of an item with stock 2 successfully) and stock is never decremented after an order."},
+      {"endpoint": "POST /api/orders", "issue": "payment_method is a free-text string; any value other than 'mock' silently becomes payment_status=pending (e.g. 'razorpay' or a typo). Should be a validated enum."},
+      {"endpoint": "app.add_middleware(CORSMiddleware)", "issue": "allow_credentials=True combined with allow_origins=['*'] is an invalid CORS combination (browsers ignore credentials). App works because auth is Bearer-only, but cookie fallback in get_current_user would never work cross-origin. Use explicit origins from env."},
+      {"endpoint": "ASW catalog count", "issue": "Review request states 15 ASW products; actual seeded count is 14 (12 flashlights + 1 comb + 1 blender). Doc/expectation mismatch, not a code bug."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Products.jsx (listing page)", "issue": "CRITICAL: /products always fails with 422 -> React error overlay / permanent loading state; no products ever render. Root cause: load() sends deal: '' (and Products has no try/catch so the promise rejection leaves loading=true). Affects header search, all category nav links (nav-cat-*), category rails, 'View all' and /products?deal=1. Fix: send deal only when truthy (deal: deal || undefined) and wrap load() in try/catch with an error state.", "selector": "[data-testid=\"products-grid\"]", "priority": "CRITICAL"},
+      {"component": "ProductDetail (ASW comb)", "issue": "No [data-testid=pdp-video] for ASW AS-C603 comb because the stored product lacks the video field (backend seed issue). AS-9509 and blender videos render correctly.", "selector": "[data-testid=\"pdp-video\"]", "priority": "MEDIUM"},
+      {"component": "AuthModal", "issue": "Console error on every open: 'DialogContent requires a DialogTitle for accessibility' (missing DialogTitle/VisuallyHidden).", "selector": "[data-testid=\"auth-modal\"]", "priority": "LOW"},
+      {"component": "Admin CouponsTab / CategoriesTab", "issue": "Delete buttons (trash icons) and the 'Add Category' button have no data-testid, so deletion can only be targeted via fragile text/DOM selectors (my UI delete step timed out for this reason; deletion works at API level).", "selector": "button > svg[trash]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Browse / search / category filtering", "issue": "Every call from Products.jsx to GET /api/products returns 422 (deal=''), so search results, category pages and deals pages are all empty and throw an unhandled axios rejection.", "affected_selectors": ["[data-testid=\"search-btn\"]", "[data-testid=\"nav-cat-flashlights\"]", "[data-testid=\"products-grid\"]", "[data-testid=\"sort-select\"]", "[data-testid=\"brand-ASW\"]", "[data-testid=\"price-slider\"]"]}
+    ],
+    "design_issues": [
+      {"screen": "Admin > Overview", "issues": ["Revenue Trend line chart shows a single lone dot with no line when only one day of orders exists - looks broken/empty; consider an area fill or 'not enough data' hint.", "Top Selling Products bar labels are truncated/overlapping at 9px font for long ASW titles."]},
+      {"screen": "Checkout", "issues": ["Address form has no 'state' field while the order payload/address is free-form; My Orders shows 'City - Pincode' only. Minor completeness gap.", "Razorpay option is visibly present but permanently disabled - acceptable for demo but should be labelled clearly as unavailable."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "CRITICAL: Fix Products.jsx query params - do not send deal:'' (send only truthy filters) and add try/catch + error UI so a failed products call doesn't hang on the loading spinner. This currently breaks all browsing/search.",
+    "Backfill the ASW comb's 'video' (and any other newly added fields) with an upsert in seed(), since insert-only seeding skips existing docs.",
+    "Add stock validation/decrement on cart add and order creation (qty > stock currently allowed, stock never reduced).",
+    "Validate payment_method as an enum ('mock' | 'cod' | 'razorpay') instead of free text.",
+    "Fix CORS: allow_credentials=True with allow_origins=['*'] is invalid; use explicit origin(s) from env.",
+    "Add DialogTitle to AuthModal DialogContent to clear the a11y console error.",
+    "Add data-testid to admin coupon/category delete buttons and the Add Category button."
+  ],
+  "critical_code_review_comments": [
+    "Products.jsx load() has no error handling; any API failure leaves loading=true forever with no user-visible message. Every page that calls an API should have loading/error states (Home, Admin tabs also swallow errors silently, e.g. adminApi.analytics().then() with no .catch()).",
+    "server.py is 675 lines with seed data, models, and all routers in one file - split into routers/ (auth, catalog, cart, orders, admin) and seed/data modules before it grows further.",
+    "Seed functions are not idempotent for field updates (only 'insert if title missing'), which already caused a data drift bug (comb video).",
+    "PUT /api/admin/products/{pid} and DELETE endpoints return 200 even when the id doesn't exist (update_one/delete_one matched 0). Should 404 on missing resources.",
+    "Cart 'add' merges qty without any max/stock cap; enrich_cart silently drops items whose product was deleted without notifying the user."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "97.5% (39/40 pytest cases)", "frontend": "~85% (auth, PDP, purchase journey, admin panel, delivery all pass; the entire /products browse page fails)"},
+  "seed_data_creation": "Created transient TEST_ users via /api/auth/register (test_*@example.com, one phone-OTP user 98xxxxxxx, qa_ui_*@example.com from UI signup), 3 demo orders on customer@voltmart.com (VM159870 delivered end-to-end), and temporary TEST_ product/category/coupon which were deleted. Role changes made during testing were reverted (only 'Arjun Delivery' remains a delivery partner); active theme/layout restored to hyper_retail/layout_mega_mall.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "Used /app/memory/test_credentials.md as-is: admin demomaptesting@gmail.com/Admin@123, customer customer@voltmart.com/Customer@123, partner partner@voltmart.com/Partner@123 - all valid and working.",
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/backend_test.py -p no:randomly -q. Only TestCatalog::test_videos_present should fail until the comb video is backfilled. Frontend: the /products page could NOT be exercised (422 loop) - after the main agent fixes the deal:'' param, retest search, category filter, brand filter, sort dropdown, price slider and add-to-cart from the listing grid (all previously untested). Purchase journey, admin panel tabs, appearance switching, phone OTP, and the delivery status flow were all verified working; order VM159870 is already delivered, so create a fresh order before retesting delivery. Leftover TEST_/qa_ui_ users exist in Admin > Users (no user-delete API).",
+  "rca_of_the_issue": "1) /products 422: Products.jsx builds its query as {category, search, deal, sort, brand, min_price, max_price} where deal defaults to '' (params.get('deal') || ''). axios serialises the empty string, and FastAPI's `deal: Optional[int]` fails int_parsing -> 422 for every request; because load() has no catch, React shows the dev error overlay (whose iframe also blocks clicks) and loading never resolves. Reproduce: curl '<BACKEND>/api/products?deal=' -> 422. 2) Missing comb video: seed() only inserts ASW_COMB when no doc with that title exists; the doc was created before the video field was added, so Mongo still has no 'video' key (verified directly in Mongo; the .mp4 URL returns 200). Mitigation: upsert with $set for video/images on every startup."
+}
