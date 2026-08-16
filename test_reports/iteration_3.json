@@ -1,0 +1,64 @@
+{
+  "summary": "Iteration 3 full test of the 4 new features + regression. Backend: 106/106 pytest assertions pass (new /app/backend/tests/test_iteration3.py = 38 tests covering reviews CRUD/upsert/validation, notifications lifecycle + read/read-all, razorpay demo create-order & payment_status matrix, plus regression on auth/products/cart/coupons/admin/theme/OTP). Frontend Playwright: review submit + upsert + logged-out 'Login to Review' -> auth modal, notification bell unread badge/items/mark-all-read, Razorpay TEST modal -> order created paid -> Order Confirmed -> cart cleared, admin assign -> partner 'New delivery assigned' + customer 'Order confirmed', partner status flow -> customer 'picked up / out for delivery / delivered' notifications, admin panel all 7 tabs, /products sort+brand filters, theme+layout switching, mobile PDP layout. All 4 new features work end-to-end. Issues found are minor/pre-existing (out-of-stock cart guard, review vs product rating inconsistency, razorpay create-order endpoint unused by UI, '(mock)' copy on confirmation).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/cart + POST /api/orders", "issue": "Out-of-stock product (stock=0) can be added to cart: returns 200 with qty clamped to 0, and POST /api/orders then creates a real order containing a 0-qty line item with total = shipping only (e.g. Rs.49). Should reject with 400 'Out of stock'. Repro: /app/backend/tests/test_stock_edge.py (2 intentionally failing tests)."},
+      {"endpoint": "POST /api/orders", "issue": "The 'Only N left of X' 400 guard in create_order is unreachable: both POST /api/cart and PUT /api/cart/{pid} clamp qty with min(qty, stock), so no cart can ever exceed stock. Dead code / no real over-sell protection if clamping is removed."},
+      {"endpoint": "GET /api/products/{id} vs GET /api/products/{id}/reviews", "issue": "Real reviews never update product.rating / rating_count. PDP header showed seeded '4.4, 1,712 ratings' while the Ratings & Reviews block showed 3.5 from 2 real reviews - two contradicting ratings on the same page."},
+      {"endpoint": "GET /api/products", "issue": "Badges are computed only at seed time, so a product with stock=0 still ships badge 'ONLY 3 LEFT' (Samsung Watch Ultra 2)."},
+      {"endpoint": "POST /api/auth/login", "issue": "Playbook checks: no httpOnly cookie is set on login (token returned in body only, although get_current_user does read an access_token cookie), no brute-force lockout after 5 failed attempts, and CORS uses allow_origins=['*'] with allow_credentials=False (so cookie auth cannot work cross-origin). bcrypt hash format ($2b$) and admin password re-seed on change both verified OK."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Checkout / Order Confirmed screen", "issue": "Copy hardcodes '(mock)': shows 'Payment: paid (mock)' even for a Razorpay TEST order and for COD ('pending (mock)'). Should reflect the chosen method.", "selector": "text=Payment:", "priority": "LOW"},
+      {"component": "Checkout summary", "issue": "Total flashes Rs.49 (shipping only) on first paint before the cart loads; no empty-cart guard on /checkout.", "selector": "[data-testid=checkout-total]", "priority": "LOW"},
+      {"component": "Dialogs (AuthModal, RazorpayDemo)", "issue": "Radix a11y console errors: 'DialogContent requires a DialogTitle' and missing aria-describedby.", "selector": "[data-testid=razorpay-modal], [data-testid=auth-modal]", "priority": "LOW"},
+      {"component": "Products page", "issue": "React console warning 'In HTML, <span> cannot be a child of option ... will cause a hydration error' logged while interacting with the sort/brand filters.", "selector": "[data-testid=sort-select]", "priority": "LOW"},
+      {"component": "Admin (mobile tab row)", "issue": "The md:hidden tab buttons in Admin.jsx have no data-testid (desktop sidebar ones do), so mobile admin nav is not testable.", "selector": "Admin.jsx line ~46", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Razorpay TEST checkout", "issue": "The UI never calls POST /api/payments/razorpay/create-order (verified via network capture: only POST /api/orders fires). The demo create-order endpoint works via API but is dead from the frontend, so the demo order_id/amount is never obtained or echoed back.", "affected_selectors": ["[data-testid=pay-razorpay]", "[data-testid=rzp-pay]"]}
+    ],
+    "design_issues": [
+      {"screen": "PDP Ratings & Reviews", "issues": ["Average shown in the summary card contradicts the seeded rating badge at the top of the same page", "With 0 reviews the average renders as a bare em dash which reads like a broken value"]},
+      {"screen": "Admin Overview", "issues": ["Revenue Trend chart degenerates to a single point because all orders share one date (cosmetic)"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration3.py",
+    "/app/backend/tests/test_stock_edge.py",
+    "/app/backend/tests/test_iteration2_fixes.py",
+    "/app/backend/tests/cleanup_test_data.py",
+    "/app/test_reports/pytest/iteration3.xml"
+  ],
+  "action_items": [
+    "Reject add-to-cart / order placement for out-of-stock products (400) instead of silently clamping qty to 0 and creating a 0-qty order.",
+    "Recompute product.rating / rating_count (or render the review average) so PDP does not show two different ratings.",
+    "Either wire POST /api/payments/razorpay/create-order into the Checkout razorpay flow (pass demo order id to POST /api/orders) or document it as Flutter-only.",
+    "Fix Order Confirmed copy so it does not say '(mock)' for razorpay/COD payments.",
+    "Add DialogTitle/Description to AuthModal + RazorpayDemo dialogs and add data-testid to the mobile admin tab buttons.",
+    "Optional (playbook): set httpOnly cookie on login with explicit CORS origins + allow_credentials, and add brute-force lockout after 5 failed logins."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 766 lines with seed data, models, and all routers in one module - split into routers/ (auth, catalog, cart, orders, reviews, notifications) and a seed module.",
+    "create_order's stock guard is unreachable because cart writes clamp qty; move validation to add_cart/update_cart and keep the order-time re-check.",
+    "notify() writes are unawaited-safe but unbounded: GET /api/notifications returns up to 100 items with no pagination and NotificationBell polls every 15s for every logged-in user - add limit/since params.",
+    "add_review upserts a fresh 'id' on every edit, so a review's id changes on update; keep the original id on update to keep client caches/deep links stable."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration3.py",
+    "/app/backend/tests/test_stock_edge.py",
+    "/app/backend/tests/test_iteration2_fixes.py",
+    "/app/backend/tests/cleanup_test_data.py",
+    "/app/frontend/src/pages/Delivery.jsx"
+  ],
+  "success_rate": {"backend": "100% (106/106 functional tests; 2 additional edge-case tests in test_stock_edge.py fail by design and document the out-of-stock bug)", "frontend": "97% (all new-feature flows and regressions passed; only cosmetic/copy/a11y issues)"},
+  "seed_data_creation": "Registered throwaway UI/API users (test_ui_*, test_rzp_*, test_it3_*, test_stock_* @example.com), reviews, orders and notifications; all removed afterwards by /app/backend/tests/cleanup_test_data.py (now also cleans reviews + notifications). The stray 'TEST Role' delivery partner left over from iteration 2 was also cleaned. Note: stock consumed by test orders was not restored (Samsung Watch Ultra 2 is now stock=0).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "As provided in /app/memory/test_credentials.md; all three roles logged in successfully (admin/customer/delivery partner) and OTP debug flow works.",
+  "context_for_next_testing_agent": "Run `pytest tests/backend_test.py tests/test_iteration2_fixes.py tests/test_iteration3.py` from /app/backend (pytest.ini forces -n 2 --dist loadscope) then `python tests/cleanup_test_data.py`. test_iteration3.py picks a product with stock>=20 for its fixture - do not use the first 'popular' product, it is out of stock. test_stock_edge.py is a deliberate red test for the out-of-stock bug: it should turn green once add-to-cart returns 400 for stock=0. In iteration2_fixes I updated two stale expectations (razorpay is now payment_status=paid; PUT /cart clamps qty so no 400). Frontend: [data-testid^=review-] also matches review-title/review-comment inputs - use a stricter selector when counting review cards. Added data-testid=delivery-done-{order_no} for completed delivery rows.",
+  "rca_of_the_issue": "Out-of-stock bug: add_cart/update_cart use qty=min(requested, product.stock); with stock=0 this stores qty=0 instead of erroring, and create_order only checks qty>stock (0>0 is false), so an order is persisted with a 0-qty line and total equal to shipping. Fix: return 400 when product.stock<=0 in add_cart/update_cart and drop/reject zero-qty lines in create_order. Rating inconsistency: reviews live in a separate `reviews` collection and add_review never updates the product document's rating/rating_count, which the PDP header and product cards still read from."
+}

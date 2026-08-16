@@ -5,7 +5,7 @@ import os
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-from fastapi import FastAPI, APIRouter, Request, HTTPException, Depends, Query
+from fastapi import FastAPI, APIRouter, Request, HTTPException, Depends, Query, Response
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
@@ -32,6 +32,19 @@ def now_iso():
 
 def new_id():
     return str(uuid.uuid4())
+
+import re
+def slugify(t):
+    return re.sub(r'[^a-z0-9]+', '-', (t or "").lower()).strip('-')[:70]
+
+def build_seo(p):
+    title=p.get("title",""); brand=p.get("brand",""); cat=p.get("category","")
+    desc=(p.get("description") or "").strip()[:155]
+    kws=[brand.lower(), cat]+[w.lower() for w in title.split() if len(w)>2]+["buy online","best price","voltmart"]
+    return {"slug":slugify(f"{title}-{p.get('id','')[:6]}"),
+            "meta_title":f"{title} - Buy Online at Best Price | VoltMart"[:65],
+            "meta_description":(desc or f"Shop {title} by {brand} on VoltMart at the best price. Fast delivery, 1-year warranty, easy returns.")[:160],
+            "keywords":list(dict.fromkeys([k for k in kws if k]))}
 
 # ---------- Auth helpers ----------
 def hash_password(password: str) -> str:
@@ -145,6 +158,8 @@ class ConfigIn(BaseModel):
     active_layout: Optional[str] = None
     active_theme: Optional[str] = None
     banners: Optional[List[dict]] = None
+    seo_site_title: Optional[str] = None
+    seo_site_description: Optional[str] = None
 
 class RoleIn(BaseModel):
     role: str
@@ -320,6 +335,9 @@ async def seed():
     for _fp in ASW_PRODUCTS:
         if _fp.get("video"):
             await db.products.update_many({"title":_fp["title"]},{"$set":{"video":_fp["video"]}})
+    # auto-SEO backfill for any product missing seo metadata
+    async for _p in db.products.find({"seo":{"$exists":False}}):
+        await db.products.update_one({"id":_p["id"]},{"$set":{"seo":build_seo(_p)}})
 
 async def seed_users():
     admin_email=os.environ["ADMIN_EMAIL"].lower(); admin_pw=os.environ["ADMIN_PASSWORD"]
@@ -404,7 +422,9 @@ async def me(user: dict = Depends(get_current_user)):
 async def get_config():
     s=await db.settings.find_one({"id":"store"},{"_id":0})
     return {"active_layout":s["active_layout"],"active_theme":s["active_theme"],
-            "banners":s.get("banners",[]),"themes":THEMES,"layouts":LAYOUTS}
+            "banners":s.get("banners",[]),"themes":THEMES,"layouts":LAYOUTS,
+            "seo":{"site_title":s.get("seo_site_title","VoltMart — API-First Electronics Marketplace"),
+                   "site_description":s.get("seo_site_description","Shop laptops, smartphones, audio, cameras and gadgets at VoltMart. Best prices, fast delivery.")}}
 
 @api.put("/admin/config")
 async def update_config(body: ConfigIn, admin: dict = Depends(require_admin)):
@@ -412,6 +432,8 @@ async def update_config(body: ConfigIn, admin: dict = Depends(require_admin)):
     if body.active_layout: upd["active_layout"]=body.active_layout
     if body.active_theme: upd["active_theme"]=body.active_theme
     if body.banners is not None: upd["banners"]=body.banners
+    if body.seo_site_title is not None: upd["seo_site_title"]=body.seo_site_title
+    if body.seo_site_description is not None: upd["seo_site_description"]=body.seo_site_description
     if upd: await db.settings.update_one({"id":"store"},{"$set":upd})
     s=await db.settings.find_one({"id":"store"},{"_id":0})
     return s
@@ -474,6 +496,7 @@ async def get_product(pid: str):
 async def create_product(body: ProductIn, admin: dict = Depends(require_admin)):
     disc=round((1-body.price/body.mrp)*100) if body.mrp>0 else 0
     p={"id":new_id(),**body.model_dump(),"discount_pct":disc,"created_at":now_iso()}
+    p["seo"]=build_seo(p)
     await db.products.insert_one(p)
     return {k:v for k,v in p.items() if k!="_id"}
 
@@ -484,6 +507,8 @@ async def update_product(pid: str, body: ProductIn, admin: dict = Depends(requir
     disc=round((1-body.price/body.mrp)*100) if body.mrp>0 else 0
     await db.products.update_one({"id":pid},{"$set":{**body.model_dump(),"discount_pct":disc}})
     p=await db.products.find_one({"id":pid},{"_id":0})
+    if not p.get("seo"):
+        seo=build_seo(p); await db.products.update_one({"id":pid},{"$set":{"seo":seo}}); p["seo"]=seo
     return p
 
 @api.delete("/admin/products/{pid}")
@@ -520,6 +545,8 @@ async def add_cart(body: CartItemIn, user: dict = Depends(get_current_user)):
     prod=await db.products.find_one({"id":body.product_id})
     if not prod:
         raise HTTPException(status_code=404, detail="Product not found")
+    if prod["stock"]<=0:
+        raise HTTPException(status_code=400, detail="Out of stock")
     c=await get_cart_doc(user["id"])
     items=c["items"]; found=False
     for it in items:
@@ -606,13 +633,14 @@ async def create_order(body: CheckoutIn, user: dict = Depends(get_current_user))
                   "price":i["product"]["price"],"qty":i["qty"]} for i in cart["items"]],
         "subtotal":cart["subtotal"],"discount":round(discount),"shipping":shipping,"total":total,
         "coupon":coupon_code,"address":body.address,"payment_method":body.payment_method,
-        "payment_status":"paid" if body.payment_method=="mock" else "pending",
+        "payment_status":"pending" if body.payment_method=="cod" else "paid",
         "status":"placed","delivery_partner_id":None,"delivery_partner_name":None,
         "timeline":[{"status":"placed","at":now_iso()}],"created_at":now_iso()}
     await db.orders.insert_one(order)
     for i in cart["items"]:
         await db.products.update_one({"id":i["product"]["id"]},{"$inc":{"stock":-i["qty"]}})
     await db.carts.update_one({"user_id":user["id"]},{"$set":{"items":[]}})
+    await notify(user["id"], "Order placed 🎉", f"Your order {order['order_no']} of ₹{total:,} has been placed successfully.", "order", order["id"])
     return {k:v for k,v in order.items() if k!="_id"}
 
 @api.get("/orders")
@@ -638,7 +666,10 @@ async def assign_order(oid: str, body: AssignIn, admin: dict = Depends(require_a
     await db.orders.update_one({"id":oid},{"$set":{"delivery_partner_id":partner["id"],
         "delivery_partner_name":partner["name"],"status":"confirmed"},
         "$push":{"timeline":{"status":"confirmed","at":now_iso()}}})
-    return await db.orders.find_one({"id":oid},{"_id":0})
+    o=await db.orders.find_one({"id":oid},{"_id":0})
+    await notify(partner["id"], "New delivery assigned 🚚", f"Order {o['order_no']} has been assigned to you for delivery.", "delivery", oid)
+    await notify(o["user_id"], "Order confirmed ✅", f"Your order {o['order_no']} is confirmed and out for processing.", "order", oid)
+    return o
 
 @api.put("/orders/{oid}/status")
 async def update_status(oid: str, body: StatusIn, user: dict = Depends(require_partner)):
@@ -650,6 +681,8 @@ async def update_status(oid: str, body: StatusIn, user: dict = Depends(require_p
         raise HTTPException(status_code=400, detail="Invalid status")
     await db.orders.update_one({"id":oid},{"$set":{"status":body.status},
         "$push":{"timeline":{"status":body.status,"at":now_iso()}}})
+    labels={"picked_up":"picked up","in_transit":"out for delivery","delivered":"delivered","confirmed":"confirmed"}
+    await notify(o["user_id"], f"Order {labels.get(body.status, body.status)}", f"Your order {o['order_no']} is now {labels.get(body.status, body.status)}.", "order", oid)
     return await db.orders.find_one({"id":oid},{"_id":0})
 
 @api.get("/delivery/orders")
@@ -696,6 +729,63 @@ async def analytics(admin: dict = Depends(require_admin)):
     return {"revenue":revenue,"orders_count":len(orders),"users_count":users_count,
             "products_count":products_count,"orders_by_status":[{"status":k,"count":v} for k,v in by_status.items()],
             "top_products":[{"title":k,"qty":v} for k,v in top],"revenue_series":revenue_series}
+
+# ---------- Reviews ----------
+class ReviewIn(BaseModel):
+    rating: int
+    title: str = ""
+    comment: str = ""
+
+@api.get("/products/{pid}/reviews")
+async def list_reviews(pid: str):
+    revs=await db.reviews.find({"product_id":pid},{"_id":0}).sort([("created_at",-1)]).to_list(300)
+    count=len(revs)
+    avg=round(sum(r["rating"] for r in revs)/count,1) if count else 0
+    dist={str(s):0 for s in range(1,6)}
+    for r in revs: dist[str(r["rating"])]=dist.get(str(r["rating"]),0)+1
+    return {"reviews":revs,"average":avg,"count":count,"distribution":dist}
+
+@api.post("/products/{pid}/reviews")
+async def add_review(pid: str, body: ReviewIn, user: dict = Depends(get_current_user)):
+    if body.rating<1 or body.rating>5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+    if await db.products.find_one({"id":pid}) is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    rev={"id":new_id(),"product_id":pid,"user_id":user["id"],"user_name":user.get("name","User"),
+         "rating":body.rating,"title":body.title,"comment":body.comment,"created_at":now_iso()}
+    await db.reviews.update_one({"product_id":pid,"user_id":user["id"]},{"$set":rev},upsert=True)
+    return rev
+
+# ---------- Notifications (backend-fired events; Flutter-consumable) ----------
+async def notify(user_id, title, body, kind="order", order_id=None):
+    if not user_id: return
+    await db.notifications.insert_one({"id":new_id(),"user_id":user_id,"title":title,"body":body,
+        "kind":kind,"order_id":order_id,"read":False,"created_at":now_iso()})
+
+@api.get("/notifications")
+async def get_notifications(user: dict = Depends(get_current_user)):
+    items=await db.notifications.find({"user_id":user["id"]},{"_id":0}).sort([("created_at",-1)]).to_list(100)
+    return {"items":items,"unread":sum(1 for n in items if not n["read"])}
+
+@api.post("/notifications/{nid}/read")
+async def read_notification(nid: str, user: dict = Depends(get_current_user)):
+    await db.notifications.update_one({"id":nid,"user_id":user["id"]},{"$set":{"read":True}})
+    return {"ok":True}
+
+@api.post("/notifications/read-all")
+async def read_all_notifications(user: dict = Depends(get_current_user)):
+    await db.notifications.update_many({"user_id":user["id"]},{"$set":{"read":True}})
+    return {"ok":True}
+
+class RzpOrderIn(BaseModel):
+    amount: float
+
+@api.post("/payments/razorpay/create-order")
+async def rzp_create_order(body: RzpOrderIn, user: dict = Depends(get_current_user)):
+    # DEMO / TEST mode — no live Razorpay keys configured. Mirrors the real create-order response shape
+    # so the frontend (and a future Flutter app) can use the same flow when live keys are added.
+    return {"id":"order_demo_"+new_id()[:12],"amount":int(body.amount*100),"currency":"INR",
+            "key_id":"rzp_test_demo","demo":True}
 
 app.include_router(api)
 app.add_middleware(CORSMiddleware, allow_credentials=False,

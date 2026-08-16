@@ -75,7 +75,7 @@ export default function Delivery() {
           <h2 className="font-head font-bold text-sm mt-6 mb-2" style={{ color: "var(--text)" }}>Completed</h2>
           <div className="space-y-2">
             {done.map((o) => (
-              <div key={o.id} className="surface border p-3 flex items-center gap-2" style={{ borderColor: "var(--border-c)" }}>
+              <div key={o.id} data-testid={`delivery-done-${o.order_no}`} className="surface border p-3 flex items-center gap-2" style={{ borderColor: "var(--border-c)" }}>
                 <CheckCircle2 size={16} style={{ color: "#16a34a" }} />
                 <span className="text-sm font-medium" style={{ color: "var(--text)" }}>{o.order_no}</span>
                 <span className="text-xs ml-auto" style={{ color: "var(--muted)" }}>{money(o.total)}</span>

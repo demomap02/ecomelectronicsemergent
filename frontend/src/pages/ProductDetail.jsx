@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Star, ShoppingCart, Zap, Truck, ShieldCheck, RotateCcw, Loader2, Minus, Plus } from "lucide-react";
-import { shopApi, cartApi, money } from "@/services/api";
+import { shopApi, cartApi, money, reviewApi, apiErr } from "@/services/api";
 import { ProductCard } from "@/components/ProductCard";
 import { useAuth } from "@/context/AuthContext";
 import { useStore } from "@/context/StoreContext";
@@ -125,6 +125,99 @@ export default function ProductDetail() {
           </div>
         </section>
       )}
+
+      <ReviewsSection pid={id} />
     </div>
+  );
+}
+
+function ReviewsSection({ pid }) {
+  const { user, setShowAuth } = useAuth();
+  const [data, setData] = useState(null);
+  const [form, setForm] = useState({ rating: 5, title: "", comment: "" });
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = () => reviewApi.list(pid).then(setData);
+  useEffect(() => { load(); }, [pid]);
+
+  const submit = async () => {
+    if (!user) { setShowAuth(true); return; }
+    setSubmitting(true);
+    try {
+      await reviewApi.add(pid, form);
+      toast.success("Thanks for your review!");
+      setForm({ rating: 5, title: "", comment: "" });
+      load();
+    } catch (e) { toast.error(apiErr(e.response?.data?.detail)); }
+    setSubmitting(false);
+  };
+
+  if (!data) return null;
+  return (
+    <section className="mt-12" data-testid="reviews-section">
+      <h3 className="font-head text-xl font-bold mb-4" style={{ color: "var(--text)" }}>Ratings & Reviews</h3>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Summary + form */}
+        <div className="space-y-4">
+          <div className="surface border p-4 text-center" style={{ borderColor: "var(--border-c)" }}>
+            <p className="font-head text-4xl font-extrabold" style={{ color: "var(--text)" }}>{data.average || "—"}</p>
+            <div className="flex justify-center gap-0.5 my-1">
+              {[1, 2, 3, 4, 5].map((s) => <Star key={s} size={15} fill={s <= Math.round(data.average) ? "#f59e0b" : "none"} style={{ color: "#f59e0b" }} />)}
+            </div>
+            <p className="text-xs" style={{ color: "var(--muted)" }}>{data.count} review{data.count !== 1 ? "s" : ""}</p>
+            <div className="mt-3 space-y-1">
+              {[5, 4, 3, 2, 1].map((s) => {
+                const c = data.distribution[String(s)] || 0;
+                const pct = data.count ? (c / data.count) * 100 : 0;
+                return (
+                  <div key={s} className="flex items-center gap-2 text-[11px]" style={{ color: "var(--muted)" }}>
+                    <span className="w-3">{s}</span><Star size={9} fill="#f59e0b" style={{ color: "#f59e0b" }} />
+                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--border-c)" }}>
+                      <div className="h-full" style={{ width: `${pct}%`, background: "var(--primary)" }} />
+                    </div>
+                    <span className="w-5 text-right">{c}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="surface border p-4" style={{ borderColor: "var(--border-c)" }}>
+            <p className="text-sm font-bold mb-2" style={{ color: "var(--text)" }}>Rate this product</p>
+            <div className="flex gap-1 mb-2">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <button key={s} data-testid={`rate-star-${s}`} onClick={() => setForm({ ...form, rating: s })}>
+                  <Star size={22} fill={s <= form.rating ? "#f59e0b" : "none"} style={{ color: "#f59e0b" }} />
+                </button>
+              ))}
+            </div>
+            <input data-testid="review-title" placeholder="Title (optional)" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
+              className="w-full px-3 py-2 text-sm border rounded-md mb-2" style={{ background: "var(--surface)", color: "var(--text)", borderColor: "var(--border-c)" }} />
+            <textarea data-testid="review-comment" placeholder="Share your experience…" value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} rows={3}
+              className="w-full px-3 py-2 text-sm border rounded-md mb-2" style={{ background: "var(--surface)", color: "var(--text)", borderColor: "var(--border-c)" }} />
+            <button data-testid="submit-review" onClick={submit} disabled={submitting} className="btn-primary w-full py-2 text-sm">
+              {user ? "Submit Review" : "Login to Review"}
+            </button>
+          </div>
+        </div>
+        {/* Review list */}
+        <div className="md:col-span-2 space-y-3">
+          {data.reviews.length === 0 ? (
+            <div className="surface border p-8 text-center text-sm" style={{ borderColor: "var(--border-c)", color: "var(--muted)" }}>
+              No reviews yet. Be the first to review this product!
+            </div>
+          ) : data.reviews.map((r) => (
+            <div key={r.id} data-testid={`review-${r.id}`} className="surface border p-4" style={{ borderColor: "var(--border-c)" }}>
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "var(--primary)", color: "var(--text)" }}>{(r.user_name || "U")[0].toUpperCase()}</div>
+                <span className="text-sm font-semibold" style={{ color: "var(--text)" }}>{r.user_name}</span>
+                <span className="flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded text-white ml-1" style={{ background: "#16a34a" }}>{r.rating} <Star size={9} fill="white" /></span>
+              </div>
+              {r.title && <p className="text-sm font-bold" style={{ color: "var(--text)" }}>{r.title}</p>}
+              <p className="text-sm mt-0.5" style={{ color: "var(--muted)" }}>{r.comment}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }

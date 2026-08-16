@@ -4,6 +4,7 @@ import { Search, ShoppingCart, User, LogOut, LayoutDashboard, Truck, Menu, Zap }
 import { useAuth } from "@/context/AuthContext";
 import { useStore } from "@/context/StoreContext";
 import { shopApi } from "@/services/api";
+import { NotificationBell } from "@/components/NotificationBell";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
@@ -38,6 +39,7 @@ export function Header() {
         </form>
 
         <div className="flex items-center gap-2 ml-auto">
+          {user && <NotificationBell />}
           <button data-testid="cart-btn" onClick={() => navigate("/cart")} className="relative p-2 rounded-full hover:opacity-80" title="Cart">
             <ShoppingCart size={22} style={{ color: "var(--text)" }} />
             {cart.count > 0 && (

@@ -126,12 +126,15 @@ class TestStock:
         assert c.status_code == 200
         pid = c.json()["id"]
         try:
-            # PUT cart bypasses cap -> order must reject
-            requests.put(f"{BASE}/cart/{pid}", headers=h, json={"product_id": pid, "qty": 10}, timeout=30)
+            # PUT /cart also clamps qty to available stock, so the order is placed at stock qty.
+            # (The create_order "Only N left" guard is therefore unreachable via the public API.)
+            put = requests.put(f"{BASE}/cart/{pid}", headers=h, json={"product_id": pid, "qty": 10}, timeout=30)
+            assert put.status_code == 200
+            assert next(i for i in put.json()["items"] if i["product"]["id"] == pid)["qty"] == 2
             r = requests.post(f"{BASE}/orders", headers=h,
                               json={"address": ADDRESS, "payment_method": "mock"}, timeout=30)
-            assert r.status_code == 400, f"expected 400 got {r.status_code} {r.text[:200]}"
-            assert "left" in r.json()["detail"].lower()
+            assert r.status_code == 200, r.text[:200]
+            assert next(i for i in r.json()["items"] if i["product_id"] == pid)["qty"] == 2
             clear_cart(h)
         finally:
             requests.delete(f"{BASE}/admin/products/{pid}", headers=hdr(admin_tok), timeout=30)
@@ -157,7 +160,8 @@ class TestStock:
 
 # ---------- Payment method validation ----------
 class TestPayment:
-    @pytest.mark.parametrize("pm,expected_status", [("mock", "paid"), ("cod", "pending"), ("razorpay", "pending")])
+    # iteration3: razorpay demo checkout marks the order paid (was pending in iteration2)
+    @pytest.mark.parametrize("pm,expected_status", [("mock", "paid"), ("cod", "pending"), ("razorpay", "paid")])
     def test_valid_payment_methods(self, cust_tok, pm, expected_status):
         h = hdr(cust_tok)
         clear_cart(h)

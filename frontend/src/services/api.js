@@ -79,6 +79,19 @@ export const adminApi = {
   analytics: () => client.get("/admin/analytics").then((r) => r.data),
 };
 
+// Reviews
+export const reviewApi = {
+  list: (pid) => client.get(`/products/${pid}/reviews`).then((r) => r.data),
+  add: (pid, d) => client.post(`/products/${pid}/reviews`, d).then((r) => r.data),
+};
+
+// Notifications
+export const notifyApi = {
+  list: () => client.get("/notifications").then((r) => r.data),
+  read: (id) => client.post(`/notifications/${id}/read`).then((r) => r.data),
+  readAll: () => client.post("/notifications/read-all").then((r) => r.data),
+};
+
 export function money(n) {
   return "₹" + Number(n || 0).toLocaleString("en-IN");
 }

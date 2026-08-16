@@ -11,8 +11,11 @@ test_users = list(db.users.find({"$or": [{"email": {"$regex": "^test_", "$option
 ids = [u["id"] for u in test_users]
 o = db.orders.delete_many({"$or": [{"user_id": {"$in": ids}}, {"user_email": {"$regex": "^test_", "$options": "i"}}]})
 c = db.carts.delete_many({"user_id": {"$in": ids}})
+r = db.reviews.delete_many({"user_id": {"$in": ids}})
+n = db.notifications.delete_many({"user_id": {"$in": ids}})
 u = db.users.delete_many({"id": {"$in": ids}})
 p = db.products.delete_many({"title": {"$regex": "^TEST_"}})
-print(f"deleted users={u.deleted_count} orders={o.deleted_count} carts={c.deleted_count} products={p.deleted_count}")
+print(f"deleted users={u.deleted_count} orders={o.deleted_count} carts={c.deleted_count} "
+      f"products={p.deleted_count} reviews={r.deleted_count} notifications={n.deleted_count}")
 print("remaining delivery partners:", [x["email"] for x in db.users.find({"role": "delivery_partner"}, {"email": 1})])
 cli.close()

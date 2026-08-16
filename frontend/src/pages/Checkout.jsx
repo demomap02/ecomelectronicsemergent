@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { CheckCircle2, Loader2, Tag, CreditCard, Wallet } from "lucide-react";
 import { cartApi, orderApi, money, apiErr } from "@/services/api";
 import { useStore } from "@/context/StoreContext";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -14,6 +15,7 @@ export default function Checkout() {
   const [pay, setPay] = useState("mock");
   const [loading, setLoading] = useState(false);
   const [placed, setPlaced] = useState(null);
+  const [showRzp, setShowRzp] = useState(false);
 
   const set = (k) => (e) => setAddr({ ...addr, [k]: e.target.value });
   const shipping = cart.subtotal > 499 ? 0 : 49;
@@ -25,15 +27,21 @@ export default function Checkout() {
     catch (e) { toast.error(apiErr(e.response?.data?.detail)); setApplied(null); }
   };
 
-  const placeOrder = async () => {
-    if (!addr.name || !addr.phone || !addr.line1 || !addr.pincode) { toast.error("Please fill in all address fields"); return; }
+  const doCreateOrder = async () => {
     setLoading(true);
     try {
       const order = await orderApi.create({ address: addr, payment_method: pay, coupon: applied?.code || null });
       await refreshCart();
+      setShowRzp(false);
       setPlaced(order);
     } catch (e) { toast.error(apiErr(e.response?.data?.detail)); }
     setLoading(false);
+  };
+
+  const placeOrder = async () => {
+    if (!addr.name || !addr.phone || !addr.line1 || !addr.pincode) { toast.error("Please fill in all address fields"); return; }
+    if (pay === "razorpay") { setShowRzp(true); return; }
+    doCreateOrder();
   };
 
   if (placed) {
@@ -71,11 +79,12 @@ export default function Checkout() {
 
         <div className="surface border p-5" style={{ borderColor: "var(--border-c)" }}>
           <h3 className="font-bold text-sm mb-3" style={{ color: "var(--text)" }}>Payment Method</h3>
-          {[["mock", "Pay Now (Demo — instantly paid)", CreditCard], ["razorpay", "Razorpay (coming soon)", Wallet], ["cod", "Cash on Delivery", Wallet]].map(([v, l, Ic]) => (
+          {[["mock", "Pay Now (Demo — instantly paid)", CreditCard], ["razorpay", "Razorpay (Test Mode)", Wallet], ["cod", "Cash on Delivery", Wallet]].map(([v, l, Ic]) => (
             <label key={v} className="flex items-center gap-3 p-2.5 rounded border mb-2 cursor-pointer" style={{ borderColor: pay === v ? "var(--primary)" : "var(--border-c)" }}>
-              <input type="radio" name="pay" checked={pay === v} onChange={() => setPay(v)} disabled={v === "razorpay"} data-testid={`pay-${v}`} />
+              <input type="radio" name="pay" checked={pay === v} onChange={() => setPay(v)} data-testid={`pay-${v}`} />
               <Ic size={16} style={{ color: "var(--primary)" }} />
               <span className="text-sm" style={{ color: "var(--text)" }}>{l}</span>
+              {v === "razorpay" && <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "#072654", color: "#fff" }}>TEST</span>}
             </label>
           ))}
         </div>
@@ -102,7 +111,43 @@ export default function Checkout() {
           </button>
         </div>
       </div>
+      <RazorpayDemo open={showRzp} onOpenChange={setShowRzp} amount={total} contact={addr.phone} name={addr.name} onPay={doCreateOrder} loading={loading} />
     </div>
+  );
+}
+
+function RazorpayDemo({ open, onOpenChange, amount, contact, name, onPay, loading }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm p-0 overflow-hidden gap-0" data-testid="razorpay-modal">
+        <div className="px-5 py-4 text-white" style={{ background: "#072654" }}>
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-lg tracking-tight">Razorpay</span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/20">TEST MODE</span>
+          </div>
+          <p className="text-xs text-white/70 mt-0.5">VoltMart · Secure Checkout</p>
+        </div>
+        <div className="p-5">
+          <div className="flex items-baseline justify-between mb-4">
+            <span className="text-sm text-slate-500">Amount payable</span>
+            <span className="font-bold text-2xl text-slate-900">{money(amount)}</span>
+          </div>
+          <div className="space-y-2 mb-4">
+            <div className="text-xs font-semibold text-slate-600">Card (Test)</div>
+            <input readOnly value="4111 1111 1111 1111" className="w-full px-3 py-2 text-sm border rounded-md bg-slate-50 text-slate-700" data-testid="rzp-card" />
+            <div className="grid grid-cols-2 gap-2">
+              <input readOnly value="12/34" className="px-3 py-2 text-sm border rounded-md bg-slate-50 text-slate-700" />
+              <input readOnly value="123" className="px-3 py-2 text-sm border rounded-md bg-slate-50 text-slate-700" />
+            </div>
+            <p className="text-[11px] text-slate-400">Demo mode — no real payment is processed. Add live Razorpay keys to go live.</p>
+          </div>
+          <button data-testid="rzp-pay" onClick={onPay} disabled={loading}
+            className="w-full py-3 text-sm font-bold text-white rounded-md flex items-center justify-center gap-2" style={{ background: "#3395FF" }}>
+            {loading && <Loader2 size={15} className="animate-spin" />} Pay {money(amount)}
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
